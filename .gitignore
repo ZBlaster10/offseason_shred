@@ -1,0 +1,13 @@
+node_modules
+dist
+dev-dist
+*.local
+.DS_Store
+coverage
+android/app/build
+ios/App/build
+*.tsbuildinfo
+
+# Local-only files
+.claude/settings.local.json
+audit.txt
