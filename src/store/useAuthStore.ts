@@ -15,9 +15,12 @@ interface AuthState {
   user: AccountUser | null
   sync: SyncStatus
   signInOpen: boolean
+  /** Which form the sign-in sheet opens on. */
+  signInMode: 'signIn' | 'signUp'
   /** Shown in the sign-in sheet. */
   error: string | null
   openSignIn: () => void
+  openSignUp: () => void
   closeSignIn: () => void
 }
 
@@ -27,7 +30,9 @@ export const useAuthStore = create<AuthState>()((set) => ({
   user: null,
   sync: 'synced',
   signInOpen: false,
+  signInMode: 'signIn',
   error: null,
-  openSignIn: () => set({ signInOpen: true, error: null }),
+  openSignIn: () => set({ signInOpen: true, signInMode: 'signIn', error: null }),
+  openSignUp: () => set({ signInOpen: true, signInMode: 'signUp', error: null }),
   closeSignIn: () => set({ signInOpen: false, error: null }),
 }))

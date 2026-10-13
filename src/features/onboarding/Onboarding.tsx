@@ -1,10 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { ArrowLeft, CalendarCheck, Flame, LoaderCircle, Smartphone } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/Button'
 import type { DaysPerWeek, EquipmentId, Goal, Level, SessionMinutes } from '@/domain/types'
 import { useAppStore } from '@/store/useAppStore'
+import { useAuthStore } from '@/store/useAuthStore'
+import { cloudEnabled } from '@/sync/config'
 import { DaysQuestion, DurationQuestion, EquipmentQuestion, GoalsQuestion, LevelQuestion, QuestionHeader, SeasonQuestion } from './questions'
 
 interface Draft {
@@ -16,13 +18,21 @@ interface Draft {
   seasonStart: string | null | undefined
 }
 
-const STEPS = ['days', 'equipment', 'level', 'goals', 'duration', 'season'] as const
+const QUESTIONS = ['days', 'equipment', 'level', 'goals', 'duration', 'season'] as const
+type Step = (typeof QUESTIONS)[number] | 'save'
 
 export default function Onboarding() {
   const navigate = useNavigate()
   const completeOnboarding = useAppStore((s) => s.completeOnboarding)
   // Guard on mount only, so finishing onboarding can navigate to the reveal screen.
   const alreadyOnboarded = useRef(useAppStore.getState().profile !== null).current
+  // Offer an account before building the plan, unless they already signed in on the welcome screen.
+  const STEPS = useRef<readonly Step[]>(
+    cloudEnabled && !['signedIn', 'connecting'].includes(useAuthStore.getState().status) ? [...QUESTIONS, 'save'] : QUESTIONS,
+  ).current
+  const authStatus = useAuthStore((s) => s.status)
+  const openSignUp = useAuthStore((s) => s.openSignUp)
+  const openSignIn = useAuthStore((s) => s.openSignIn)
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
   const [d, setD] = useState<Draft>({
@@ -34,6 +44,25 @@ export default function Onboarding() {
     seasonStart: undefined,
   })
   const key = STEPS[step]
+
+  const buildPlan = () => {
+    completeOnboarding({
+      daysPerWeek: d.daysPerWeek!,
+      equipment: d.equipment,
+      level: d.level!,
+      goals: d.goals,
+      sessionMinutes: d.sessionMinutes!,
+      seasonStart: d.seasonStart ?? null,
+    })
+    navigate('/building', { replace: true })
+  }
+
+  // Signed up or in from the save step: their account is ready, so build the plan into it.
+  const signedInOnSave = key === 'save' && authStatus === 'signedIn'
+  useEffect(() => {
+    if (signedInOnSave) buildPlan()
+  }, [signedInOnSave])
+
   if (alreadyOnboarded) return <Navigate to="/" replace />
 
   const valid = {
@@ -43,22 +72,13 @@ export default function Onboarding() {
     goals: d.goals.length > 0,
     duration: d.sessionMinutes !== null,
     season: d.seasonStart !== undefined,
+    save: true,
   }[key]
 
   const go = (delta: number) => {
     setDir(delta)
     if (step + delta < 0) return navigate('/welcome')
-    if (step + delta >= STEPS.length) {
-      completeOnboarding({
-        daysPerWeek: d.daysPerWeek!,
-        equipment: d.equipment,
-        level: d.level!,
-        goals: d.goals,
-        sessionMinutes: d.sessionMinutes!,
-        seasonStart: d.seasonStart ?? null,
-      })
-      return navigate('/building', { replace: true })
-    }
+    if (step + delta >= STEPS.length) return buildPlan()
     setStep(step + delta)
     window.scrollTo({ top: 0 })
   }
@@ -129,6 +149,16 @@ export default function Onboarding() {
                 <SeasonQuestion value={d.seasonStart} onChange={(v) => setD({ ...d, seasonStart: v })} />
               </>
             )}
+            {key === 'save' && (
+              <>
+                <QuestionHeader
+                  eyebrow="Save your progress"
+                  title="Keep your plan safe"
+                  subtitle="Create a free account so your plan, workouts and streak aren’t stuck on this device."
+                />
+                <SaveStep connecting={authStatus === 'connecting'} onSignUp={openSignUp} onSignIn={openSignIn} />
+              </>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -140,11 +170,54 @@ export default function Onboarding() {
               Back
             </Button>
           )}
-          <Button size="lg" className="flex-1" disabled={!valid} onClick={() => go(1)}>
-            {step === STEPS.length - 1 ? 'Build my plan' : 'Continue'}
-          </Button>
+          {key === 'save' ? (
+            <Button variant="secondary" size="lg" className="flex-1" disabled={authStatus === 'connecting'} onClick={() => go(1)}>
+              Skip for now
+            </Button>
+          ) : (
+            <Button size="lg" className="flex-1" disabled={!valid} onClick={() => go(1)}>
+              {key === 'season' ? 'Build my plan' : 'Continue'}
+            </Button>
+          )}
         </div>
       </footer>
+    </div>
+  )
+}
+
+const SAVE_PERKS = [
+  { icon: CalendarCheck, text: 'Your personalized plan, saved to your account' },
+  { icon: Flame, text: 'Workout history and weekly streak backed up' },
+  { icon: Smartphone, text: 'Train on any phone, tablet or laptop' },
+]
+
+function SaveStep({ connecting, onSignUp, onSignIn }: { connecting: boolean; onSignUp: () => void; onSignIn: () => void }) {
+  return (
+    <div className="grid gap-6">
+      <ul className="grid gap-3 rounded-3xl bg-elev p-5 shadow-card">
+        {SAVE_PERKS.map(({ icon: Icon, text }) => (
+          <li key={text} className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+              <Icon size={20} />
+            </span>
+            {text}
+          </li>
+        ))}
+      </ul>
+      {connecting ? (
+        <div className="flex items-center gap-3 text-muted">
+          <LoaderCircle size={20} className="animate-spin text-primary" /> Connecting your account…
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:max-w-sm">
+          <Button size="lg" onClick={onSignUp}>
+            Create free account
+          </Button>
+          <Button size="lg" variant="outline" onClick={onSignIn}>
+            I already have an account
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

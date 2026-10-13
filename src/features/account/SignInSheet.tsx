@@ -17,7 +17,8 @@ export function SignInSheet() {
   const close = useAuthStore((s) => s.closeSignIn)
   const status = useAuthStore((s) => s.status)
   const error = useAuthStore((s) => s.error)
-  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn')
+  const openMode = useAuthStore((s) => s.signInMode)
+  const [mode, setMode] = useState(openMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -28,6 +29,10 @@ export function SignInSheet() {
   useEffect(() => {
     if (open && status === 'signedIn') close()
   }, [open, status, close])
+
+  useEffect(() => {
+    if (open) setMode(openMode)
+  }, [open, openMode])
 
   useEffect(() => {
     if (!open) {
